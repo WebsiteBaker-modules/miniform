@@ -7,12 +7,11 @@
  * @link			http://www.dev4me.nl/modules-snippets/opensource/miniform/
  * @license         http://www.gnu.org/licenses/gpl.html
  * @platform        WebsiteBaker 2.8.x
- * @requirements    PHP 5.2.2 and higher
- * @version         0.7
- * @lastmodified    april 7, 2014
+ * @requirements    PHP 5.6 and higher
+ * @version         0.11.0
+ * @lastmodified    june 30, 2017
  *
  */
-
 
 require('../../config.php');
 require_once (WB_PATH.'/framework/functions.php');
@@ -23,13 +22,21 @@ if(isset($_POST['section_id'])) {
 	$email = $admin->add_slashes(strip_tags($_POST['email']));
 	$subject = $admin->add_slashes(strip_tags($_POST['subject']));
 	$template = $admin->add_slashes(strip_tags($_POST['template']));
-	$success = intval($_POST['successpage']);
+	$use_ajax = (int)$_POST['use_ajax'];
+	$use_recaptcha = (int)$_POST['use_recaptcha'];
+	$recaptcha_key = $admin->add_slashes(strip_tags($_POST['recaptcha_key']));
+	$recaptcha_secret = $admin->add_slashes(strip_tags($_POST['recaptcha_secret']));
+	$success = (int)$_POST['successpage'];
 	
 	$query = "UPDATE ".TABLE_PREFIX."mod_miniform SET 
 			`email` = '$email', 
 			`subject` = '$subject', 
 			`successpage` = '$success', 
-			`template` = '$template' 
+			`template` = '$template',
+			`use_ajax` = '$use_ajax',
+			`use_recaptcha` = '$use_recaptcha',
+			`recaptcha_key` = '$recaptcha_key',
+			`recaptcha_secret` = '$recaptcha_secret'
 			WHERE `section_id` = '$section_id'";
 	$database->query($query);	
 }

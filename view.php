@@ -7,23 +7,14 @@
  * @link			http://www.dev4me.nl/modules-snippets/opensource/miniform/
  * @license         http://www.gnu.org/licenses/gpl.html
  * @platform        WebsiteBaker 2.8.x
- * @requirements    PHP 5.2.2 and higher
- * @version         0.7
- * @lastmodified    april 7, 2014
+ * @requirements    PHP 5.6 and higher
+ * @version         0.11.0
+ * @lastmodified    june 30, 2017
  *
  */
 
  /*
-todo: file uploads
 
-- upload one or more files 
-- save the files to a temp location with random name
-- keep original name and temp name as sessions
-- when sending mail, add temp file and set name to original name
-- after sending, clean temp files 
-- clean old files (orphans that did not send)
-  
- 
  */
 if(defined('WB_PATH') == false) { exit("Cannot access this file directly"); }
 global $MF;
@@ -32,8 +23,15 @@ if(!file_exists(WB_PATH.'/modules/miniform/languages/'.LANGUAGE.'.php')) {
 } else {
 	require(WB_PATH.'/modules/miniform/languages/'.LANGUAGE.'.php');
 }
-
 require_once (dirname(__FILE__).'/functions.php');
+
+if(isset($_SESSION['lastform'])) unset($_SESSION['lastform']);
+mb_internal_encoding(DEFAULT_CHARSET);
+
+if(isAjaxRequest() && isset($_POST['miniform'])) {
+	$sid = (int)$_POST['miniform'];
+	$section_id = $sid;
+}
 
 $mf = new mform($section_id);
 
@@ -69,6 +67,13 @@ $message = "";
 $message_class = "hidden";
 $form_class = "";
 $use_captcha = ( strpos($template,"{CAPTCHA}")==false ) ? false : true;
+
+$use_ajax = $settings['use_ajax'];
+$use_recaptcha = $settings['use_recaptcha'];
+$recaptcha_key = $settings['recaptcha_key'];
+$recaptcha_secret = $settings['recaptcha_secret'];
+if(!$recaptcha_key || !$recaptcha_secret) $use_recaptcha = false;
+
 $use_asp = ( strpos($template,"{ASPFIELDS}")==false ) ? false : true;
 $captcha_class = $use_captcha ? "":"hidden";
 $captcha = "";
@@ -78,8 +83,12 @@ $next_required = true;
 $aspdetect = false;
 
 if ($use_captcha && $mf->dataPosted && $mf->myPost) {
-
-	if(isset($_POST['captcha']) AND $_POST['captcha'] != ''){
+	if($use_recaptcha) {
+		if($mf->reCaptcha_check($recaptcha_secret) === false) {
+			$var[] = "{CAPTCHA_ERROR}"; $value[] = " missing";
+			$all_required = false;
+		}
+	} elseif(isset($_POST['captcha']) AND $_POST['captcha'] != ''){
 		$ccheck = time(); $ccheck1 = time();
 		if(isset($_SESSION['captcha'.$section_id])) $ccheck1 = $_SESSION['captcha'.$section_id];
 		if(isset($_SESSION['captcha'])) $ccheck = $_SESSION['captcha'];
@@ -131,7 +140,7 @@ if($mf->myPost) {
 			$mf->error = '';
 		}
 		$required = false;
-		$emailmessage = $mf->add_template($emailmessage, '{'.strtoupper($key).'}', $post);
+		$emailmessage = $mf->add_template($emailmessage, '{'.mb_strtoupper($key).'}', $post);
 		if(substr($key,0,3)=="mf_") {
 			$key =  substr($key,3);
 			if (substr($key,0,2)=="r_") {
@@ -139,22 +148,22 @@ if($mf->myPost) {
 				$key =  substr($key,2);
 			}
 			$label_post = str_replace(" ","_",$post);
-			$var[] = "{".strtoupper($key)."}"; $value[] = $post;
-			$var[] = "{".strtoupper($key.'_'.$label_post)."}"; $value[] = " checked='checked' ";
-			$var[] = "{".strtoupper($key.'_CHECKED_'.$label_post)."}"; $value[] = " checked='checked' ";
-			$var[] = "{".strtoupper($key.'_SELECTED_'.$label_post)."}"; $value[] = " selected='selected' ";
+			$var[] = "{".mb_strtoupper($key)."}"; $value[] = $post;
+			$var[] = "{".mb_strtoupper($key.'_'.$label_post)."}"; $value[] = " checked='checked' ";
+			$var[] = "{".mb_strtoupper($key.'_CHECKED_'.$label_post)."}"; $value[] = " checked='checked' ";
+			$var[] = "{".mb_strtoupper($key.'_SELECTED_'.$label_post)."}"; $value[] = " selected='selected' ";
 			if($mf->isArray || strpos($post," | ")!==false) {
 				$tmppost = explode(' | ',$post);
 				foreach($tmppost as $tmpdata) {
 					$label_post = str_replace(" ","_",$tmpdata);
-					$var[] = "{".strtoupper($key.'_'.$label_post)."}"; $value[] = " checked='checked' ";
-					$var[] = "{".strtoupper($key.'_CHECKED_'.$label_post)."}"; $value[] = " checked='checked' ";
-					$var[] = "{".strtoupper($key.'_SELECTED_'.$label_post)."}"; $value[] = " selected='selected' ";
+					$var[] = "{".mb_strtoupper($key.'_'.$label_post)."}"; $value[] = " checked='checked' ";
+					$var[] = "{".mb_strtoupper($key.'_CHECKED_'.$label_post)."}"; $value[] = " checked='checked' ";
+					$var[] = "{".mb_strtoupper($key.'_SELECTED_'.$label_post)."}"; $value[] = " selected='selected' ";
 				}
 			}
 			if($required && $mf->dataPosted && trim($post) == '') {
 				if( $type != '-' && $type != '!') {
-					$var[] = "{".strtoupper($key)."_ERROR}"; $value[] = " missing";
+					$var[] = "{".mb_strtoupper($key)."_ERROR}"; $value[] = " missing";
 					$all_required = false;
 				} else {
 					$next_required = false;
@@ -186,10 +195,18 @@ if($mf->myPost) {
 	if(!$aspdetect) {
 		if ($all_required && $mf->dataPosted) {
 			if(!isset($next_template) || !$next_template) {
+				// add extra data by other modules SESSION['miniform']['mydata'] will be used as {MYDATA} in the email template
+				if(isset($_SESSION['miniform'])) { 
+					foreach($_SESSION['miniform'] as $_skey => $_svalue) {
+						$emailmessage = $mf->add_template($emailmessage, '{'.mb_strtoupper($_skey).'}', $_svalue);
+					}
+				}
 				// store message in database
 				$data['message_id'] = 0;
 				$data['section_id'] = $section_id;
 				$emailmessage = $mf->add_template($emailmessage, '{MAILMESSAGE}', $email_field_data);
+				//$emailmessage = preg_replace('#\{[A-Za-z_][A-Za-z_0-9.,-\/\\ ]*?\}#s', '', $emailmessage); 
+				$_SESSION['lastform'] = $emailmessage;
 				$data['data'] = addslashes($emailmessage); 
 				$data['submitted_when'] = time();
 				$mf->update_record('mod_miniform_data', 'message_id', $data );
@@ -198,8 +215,8 @@ if($mf->myPost) {
 					unset($_SESSION['form']);
 					if($successpage) {
 						$page_link = $mf->page($successpage);
-						if(headers_sent()) {
-							echo '<script type="text/javascript">window.location = "'.$page_link.'"</script>';
+						if(headers_sent() || isAjaxRequest()) {
+							sendOutput('<script type="text/javascript">window.location = "'.$page_link.'"</script>');
 						} else {
 							die(header('Location: '.$page_link , TRUE , 301));
 						}
@@ -207,6 +224,9 @@ if($mf->myPost) {
 					$message .= $MF['THANKYOU'];
 					$message_class = "ok";
 					$form_class = "hidden";
+				} else {
+					$message .= $MF['SENDERROR']."<br>".$mf->error;
+					$message_class = "error";
 				}
 			} else {
 				$template = $next_template;
@@ -227,7 +247,11 @@ if ($use_asp) {
 			'</div>';
 }
 if ($use_captcha) {
-	$captcha = $mf->captcha($section_id);
+	if($use_recaptcha) {
+		$captcha = $mf->reCaptcha($recaptcha_key);
+	} else {
+		$captcha = $mf->captcha($section_id);
+	}
 }
 $var[] = "{EMAILMESSAGE}"; $value[] = $mf->add_template($emailmessage, '{MAILMESSAGE}', $email_field_data);
 $var[] = "{PREVIOUS}"; $value[] = $prevdata;
@@ -243,8 +267,16 @@ $var[] = "{DATE}";$value[] = date( DATE_FORMAT , time()+TIMEZONE );
 $var[] = "{TIME}";$value[] = date( TIME_FORMAT , time()+TIMEZONE );
 $template = $mf->add_template($template, $var, $value);
 //clean unused fields in the template
-$template = preg_replace('#\{[A-Za-z_][A-Za-z_0-9., ]*?\}#s', '', $template); 
+$template = preg_replace('#\{(.*?)\}#s', '', $template); 
 unset($var);
 unset($value);
-echo $template;
-//echo nl2br(htmlspecialchars($prevdata));
+
+
+$spinner = '';
+if(!defined("spinnerloaded")) {
+	$spinnerimg = WB_URL.'/modules/miniform/sending.gif';
+	$spinner = '<div class="minispinner" style="display:none;position:fixed;left:0;top:0;width:100%;height:100%;background: black url('.$spinnerimg.') center center no-repeat;opacity:.6;"></div>'."\n";
+	define ('spinnerloaded' , true );
+}
+if(!isAjaxRequest() && $use_ajax) $template = $spinner.'<div class="miniform_ajax">'.$template.'</div>';
+sendOutput($template);

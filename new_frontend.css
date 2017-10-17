@@ -51,13 +51,24 @@
 .miniform label label { vertical-align: middle;	cursor:pointer;}
 .miniform .hidden { display:none; }
 .miniform .error { 
-	color: #ff4136; 
+	background: #ff4136; 
+	color: #fff; 
 	font-weight: bold;
 	border:1px solid #ff4136;
 	border-radius: 5px; 
 	padding:5px; 
 	margin-bottom: 10px; 
 }
+.miniform .ok { 
+	background: #27ae60;
+	color: #fff; 
+	font-weight: bold;
+	border:1px solid #27ae60;
+	border-radius: 5px; 
+	padding:5px; 
+	margin-bottom: 10px; 
+}
+
 
 @media screen and (max-width: 468px) {
 	.miniform .half { width: 100%; margin-right:0; float: none;}
